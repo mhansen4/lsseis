@@ -268,18 +268,19 @@ def removeTeleseisms(starttime,endtime,network,station,trig):
             eqtime = quakedict['arrival time'][i]
             if abs((eqtime - comparetime).total_seconds()) <= maxtimediff:
                 matchfound = True
-                print('\nFound teleseism.')
-                for key in ['id','latitude','longitude','magnitude','arrival time']:
-                    print(key+': '+str(quakedict[key][i]))
-                
-                print('Removing teleseism from list of triggers.\n')
-                    
-                # Record match in list of teleseisms
-                teleseisms.append(t)
         
-        if not matchfound:
-            # print('No earthquakes match this arrival time.')
+        if matchfound:
+            print('\nFound teleseism.')
+            for key in ['id','latitude','longitude','magnitude','arrival time']:
+                print(key+': '+str(quakedict[key][i]))
+                
+            print('Removing teleseism from list of triggers.\n')
+            # Record match in list of teleseisms
+            teleseisms.append(t)
+        else:
+            # Add to new list of triggers to return
             new_trig.append(t)
+            
             
     if len(teleseisms) == 0:
         print('No teleseisms found in trigger list.')
@@ -338,8 +339,11 @@ def searchComCatforLandslides(starttime,endtime,lslat,lslon,network,station):
         quakelons.append(quake.longitude)
         quakedepths.append(quake.depth)
         quakemags.append(quake.magnitude)
-        quakedistskm.append(quake.distance)
         quaketypes.append('earthquake')
+        
+        # Calculate distance from landslide to earthquakes
+        dkm, ddeg = calcCoordDistance(lslat,lslon,quake.latitude,quake.longitude)
+        quakedistskm.append(dkm)
 
     # Get list of landslides during time window from ComCat
     tempslides = search(starttime=eqstartdt,endtime=eqenddt,minmagnitude=2.0,
