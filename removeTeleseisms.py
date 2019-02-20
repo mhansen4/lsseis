@@ -264,23 +264,25 @@ def removeTeleseisms(starttime,endtime,network,station,trig):
         maxtimediff = 20. # How close EQ arrival time should be for match (in s)
     
         matchfound = False
+        tseism = 0
         for i in range(0,len(quakedict['arrival time'])):
             eqtime = quakedict['arrival time'][i]
             if abs((eqtime - comparetime).total_seconds()) <= maxtimediff:
                 matchfound = True
+                tseism = i
         
         if matchfound:
             print('\nFound teleseism.')
             for key in ['id','latitude','longitude','magnitude','arrival time']:
-                print(key+': '+str(quakedict[key][i]))
-                
+                print(key+': '+str(quakedict[key][tseism]))
+            print('trigger match:' + str(t['time']))
             print('Removing teleseism from list of triggers.\n')
             # Record match in list of teleseisms
             teleseisms.append(t)
         else:
             # Add to new list of triggers to return
             new_trig.append(t)
-            
+        
             
     if len(teleseisms) == 0:
         print('No teleseisms found in trigger list.')

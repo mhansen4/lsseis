@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from obspy import UTCDateTime
 from obspy.core.stream import Stream
 from obspy.signal.trigger import coincidence_trigger as ct
@@ -126,18 +127,16 @@ def predictArrivalTimes(st, arrival_secs, stations_to_fit):
     station_dist = [tr.stats.rdist for tr in st]
             
     # Get linear regression using minimum number of stations
-    print('Fitting linear regression to %i stations...' % stations_to_fit)
     m, b = np.polyfit(station_dist[1:stations_to_fit+1], 
                       arrival_secs[1:stations_to_fit+1], 1)         
-    print('Slope of linear regression = %f' % m)  
 
     # Use linear regression model to predict arrival times
     pred_arrival_secs = np.dot(m, station_dist) + b       
                 
     return(pred_arrival_secs, m, b)
 
-def findLandslides(st, trig, event_times, trig_i = [], 
-                   min_stations = 3, min_time_diff = 1.0):
+def findLandslides(st, trig, fit_stations, min_stations = 3, min_time_diff = 1.0, 
+                   trig_i = []):
     """
     Loops through all triggers in trigger_times and finds the first arrival times 
     of all traces. Calculates a simple linear regression using the obspy polyfit 
@@ -147,25 +146,29 @@ def findLandslides(st, trig, event_times, trig_i = [],
     INPUT
     st - obspy stream object with seismic data
     trig - list of coicidence_trigger objects
-    event_times (list of UTCDateTimes) - times from trigger_times which are 
-        potential landslides based on various checks
-    trig_i (list) - list of trig indices to evaluate
+    fit_stations (list of integers) - how many stations to try fitting linear
+        regression to
     min_stations (int) - minimum number of stations that need to display a linear
         moveout in first arrival times for trigger to count as event
     min_time_diff (float) - minimum time in seconds that first arrival time at
         station can differ from predicted arrival time for a perfect linear
         moveout in order for station to pass
+    trig_i (list) - list of trig indices to evaluate
     OUTPUT
     event_times
     m_list (list of floats) - list of linear regression slopes
     b_list (list of floats) - list of linear regression intercepts
     """
     
+    # If no triggers specified for evaluation, evaluate all of them
     if trig_i == []:
         trig_i = range(0,len(trig))
     
+    # Create empty lists to store event times and linear regression info in
+    event_times = []
     m_list = []
     b_list = []
+    fitted_stations = [] 
     
     for t in trig_i:
         print('Processing trigger %i of %i...' % (t+1,len(trig)))
@@ -173,7 +176,7 @@ def findLandslides(st, trig, event_times, trig_i = [],
         
         # Take slice of signal around trigger time
         temp = st.copy().trim(trig[t]['time']-100., 
-                              trig[t]['time']+300.)
+                              trig[t]['time']+100.)
         
         # Delete problematic stations (will need to add to)
         channels_to_remove = []
@@ -192,15 +195,16 @@ def findLandslides(st, trig, event_times, trig_i = [],
         
         # Check if arrival time belongs to event        
         if len(arrival_times) > 0:  
-            stations_to_fit = [7,3]
             try_less_stations = True
-            for stations in stations_to_fit:
+            for stations in fit_stations:
                 if try_less_stations:
                     # Find seconds between first arrival at each station and the closest station
                     arrival_secs = [time - arrival_times[0] for time in arrival_times]  
                     
                     # Get predicted arrival times
+                    print('Fitting linear regression to %i stations...' % stations)
                     arrival_secs_pred, m, b = predictArrivalTimes(temp, arrival_secs, stations)
+                    print('Slope of linear regression = %f' % m)  
                     
                     # Find difference in seconds between predicted and real arrival times
                     arrival_secs = np.array(arrival_secs)
@@ -227,6 +231,7 @@ def findLandslides(st, trig, event_times, trig_i = [],
                         event_times.append(arrival_times[0])
                         m_list.append(m)
                         b_list.append(b)
+                        fitted_stations.append(check_pass_count)
                         
                         try_less_stations = False # Don't try any new regressions
                                 
@@ -234,21 +239,33 @@ def findLandslides(st, trig, event_times, trig_i = [],
     #                                      arrival_times,arrival_inds)
                         
             print('') # Print blank line between triggers
-                
-    # If any times in event_times within 100 seconds of each other, save first one
+    
+    # If any times in event_times within 1 minute of each other, save first one
+    new_event_times = [event_times[0]]
+    new_m_list = [m_list[0]]
+    new_b_list = [b_list[0]]
+    new_fitted_stations = [fitted_stations[0]]
+    
     if len(event_times) > 0:
         event_times.sort() # Sort times from earliest to latest
-        old_event_times = event_times # Store original list of event times
-        event_times = [event_times[0]] # Create new list for event times
-        for e in range(1,len(old_event_times)):
-            if old_event_times[e] - old_event_times[e-1] > 100:
-                event_times.append(old_event_times[e])            
+        for e in range(1,len(event_times)):
+            if event_times[e] - event_times[e-1] > 60:
+                new_event_times.append(event_times[e])     
+                new_m_list.append(m_list[e])
+                new_b_list.append(b_list[e])
+                new_fitted_stations.append(fitted_stations[e])
                 
-    print('%i possible landslide(s) found.' % len(event_times))
-        
-    return(event_times, m_list, b_list)
+    print('%i possible landslide(s) found.' % len(new_event_times))
     
-def viewEvent(st,lslat,lslon,event_time):
+    # Create dataframe
+    events_df = pd.DataFrame({'Event times': new_event_times,
+                              'Moveout slope (s/km)': new_m_list,
+                              'Moveout intercept': new_b_list,
+                              'Fitted stations': new_fitted_stations})
+        
+    return(events_df)
+    
+def viewEvent(st,lslat,lslon,fit_stations,min_stations,min_time_diff,event_time):
     st = reviewData.attach_distaz_IRIS(st, lslat, lslon)
     st = st.sort(keys=['rdist', 'channel'])
     st.filter('bandpass', freqmin=1.0, freqmax=5.0)
@@ -276,13 +293,34 @@ def viewEvent(st,lslat,lslon,event_time):
     plotFirstArrivals(event_time-100.,st_trim,F4,arrival_times,arrival_inds)
 
     # Plot linear regression of arrival_times
-    if len(arrival_times) > 0:
-        # Get real and predicted arrival times
-        arrival_secs = [time - arrival_times[0] for time in arrival_times]
-        arrival_secs_pred, m, b = predictArrivalTimes(st_trim, arrival_secs,3)
+    
+    if len(arrival_times) > 0:  
+        try_less_stations = True
+        for stations in fit_stations:
+            if try_less_stations:
+                # Find seconds between first arrival at each station and the closest station
+                arrival_secs = [time - arrival_times[0] for time in arrival_times]  
+                
+                # Get predicted arrival times
+                arrival_secs_pred, m, b = predictArrivalTimes(st_trim, arrival_secs, stations)
+                
+                # Find difference in seconds between predicted and real arrival times
+                arrival_secs = np.array(arrival_secs)
+                pred_diff = arrival_secs - arrival_secs_pred
+                
+                # If predicted arrival times within some number of 
+                # seconds of actual arrival times for min number of  
+                # stations, add trigger time to event list
+                check_pass_count = 0
+                for diff in pred_diff:
+                    if abs(diff) <= min_time_diff:
+                        check_pass_count += 1
+                        
+                if check_pass_count >= min_stations:
+                    try_less_stations = False # Don't try any new regressions
 
         # Calculate distance from each seismic station to closest station
-        station_dist = [tr.stats.rdist for tr in st]
+        station_dist = [tr.stats.rdist for tr in st_trim]
         
         # Figure out how many arrival times to plot                                   
         if len(st_trim) >= 8:      
@@ -294,8 +332,8 @@ def viewEvent(st,lslat,lslon,event_time):
         plt.title('Linear Moveout Prediction and First Arrival Times')
         plt.plot(station_dist[:f], arrival_secs[:f], 'ro', 
                  label='Signal arrival times')
-        plt.plot(station_dist[:f], np.dot(m, station_dist[:f]) + b, '--b',
-                 label='Line of best fit')
+        plt.errorbar(station_dist, arrival_secs_pred, yerr=min_time_diff, 
+                  fmt='bo', label='Predicted arrival times')
         plt.xlabel('Distance from station to landslide (km)')
         plt.ylabel('Landslide signal arrival time (s)')
         plt.legend()
@@ -305,35 +343,39 @@ def viewEvent(st,lslat,lslon,event_time):
 
 ##############################################################################    
 # Input parameters
-    
-lslat = 46.843
-lslon = -121.75
-radius = 50.
 
-starttime = UTCDateTime(2011,6,25,16,0)
-endtime = UTCDateTime(2011,6,25,16,59)
-interval = 1. * 3600.  # seconds
+lslat = 46.843 # latitude of landslide in deg
+lslon = -121.75 # longitude of landslide in deg
+radius = 50. # search radius for nearest seismic stations in km
 
-starts = np.arange(starttime, endtime, interval)
-ends = starts + interval
+starttime = UTCDateTime(2011,7,4,20,0)
+endtime = UTCDateTime(2011,7,4,20,59)
 
 trigger_times = []
-event_times = []
 
 min_stations = 3
-min_time_diff = 1.0
+min_time_diff = 5.0
+fit_stations = range(7,2,-1) # Number of closest stations to fit linear regression to
 
-for i in range(0,len(starts)):
-    st, network, station = getStreamObject(starts[i],ends[i],lslat,lslon,radius)  
-    trig, trigger_times = findTriggers(st, trigger_times)
-    event_times, m_list, b_list = findLandslides(st, trig, event_times,[],
-                                                 min_stations,min_time_diff) 
+#interval = 1. * 3600.  # seconds
+#starts = np.arange(starttime, endtime, interval)
+#ends = starts + interval
+
+#for i in range(0,len(starts)):
+#    st, network, station = getStreamObject(starts[i],ends[i],lslat,lslon,radius)  
+#    trig, trigger_times = findTriggers(st, trigger_times)
+#    events_df = findLandslides(st, trig, event_times,[],
+#                                                 min_stations,min_time_diff) 
+
+st, network, station = getStreamObject(starttime,endtime,lslat,lslon,radius)  
+trig, trigger_times = findTriggers(st, trigger_times)
+events_df = findLandslides(st, trig, fit_stations, min_stations, min_time_diff, [])
+
+event_times = events_df['Event times'].values
 
 possible_ls = searchComCatforLandslides(starttime,endtime,lslat,
                                           lslon,network,station)    
 
 #print('Plotting found events...')
 #for event in event_times:
-#    viewEvent(st,lslat,lslon,event)
-    
-#viewEvent(st,lslat,lslon,trigger_times[25])
+#    viewEvent(st,lslat,lslon,fit_stations,min_stations,min_time_diff,event)
