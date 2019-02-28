@@ -20,7 +20,7 @@ findFirstArrivals - Transforms obspy stream objects in order to locate triggerin
     events in seismic signals, specifically landslides.
 """
 
-def findFirstArrivals(starttime, st, s=8, plot_checkcalcs = False):
+def transformSignals(st, plot_checkcalcs = False):
     """
     Transforms each trace in obspy stream object to determine the "first arrival",
     or onset of the trigger that might be a landslide. Returns time of this onset
@@ -28,27 +28,13 @@ def findFirstArrivals(starttime, st, s=8, plot_checkcalcs = False):
     the transformed traces for plotting. Adapts methodology from Baillard et al 
     (2014) paper on using kurtosis to pick P- and S-wave onset-times.
     INPUTS
-    starttime (UTCDateTime) - starting time of stream object
     st - obspy stream object with seismic information
-    s (int) - number of stations to check when minimizing standard
-              deviation and picking first arrival in signal
     plot_checkcalcs (boolean) - optional, set to True to visualize calculations
         at each step of signal transformation process
-    OUTPUTS
+    OUTPUT
     F4_traces (2D numpy array) - traces from stream object after fourth and final transformation 
         step, useful for plotting first arrival times
-    arrival_times (list of UTCDateTimes) - first arrival times for each trace;
-        if multiple arrivals, algorithm selects arrival closest to arrival time
-        of first trace (first, first arrival time picked for first trace)
-    arrival_i (list of numpy int64s) - indices of first arrival times within
-        traces
-    """
-    
-    arrival_i = [] # Indices of first arrival times in signal traces
-    arrival_td = [] # Timedeltas of first arrival times (in s) after starttime
-    
-    all_min_i = [] # Store indices of all local minima for each trace
-    
+    """    
     max_length = 0
     for trace in st:
         if len(trace) > max_length:
@@ -149,83 +135,123 @@ def findFirstArrivals(starttime, st, s=8, plot_checkcalcs = False):
             plt.plot(F4)
                 
             plt.show()   
-        
-        sample_rate = st[t].stats.sampling_rate
-        
-        # Find first arrival time
-        
-        # Find minima in signal (must be at least 5% as small as smallest minima)
-        F4_mins = spsignal.argrelextrema(F4, np.less)[0]
-        all_min_i.append(F4_mins[np.where(F4[F4_mins] < min(F4)*.01)[0]])
-
-        # Select largest min as first arrival at first
-        arrival_index = np.where(F4 == min(F4))[0][0]
-
-        # Set minimum that is closest in time to previous station's arrival time 
-        # but AFTER it as arrival time
-#        if len(mins) > 1 and t > 0:
-#            closest_min = mins[0]
-#            for i in range(1,len(mins)):
-#                if abs(arrival_times[t-1] - UTCDateTime(mins[i]/sample_rate + \
-#                   starttime.timestamp)) < abs(arrival_times[t-1] - \
-#                       UTCDateTime(closest_min/sample_rate + starttime.timestamp)):
-#                    closest_min = mins[i]
-#            arrival_index = closest_min
-#        else:
-#            arrival_index = mins[0]
     
+        # Interpolate transformed signals so they are all the same length
+        # NOTE: Does not affect sampling rate -- still same as stream object
         F4_traces[t] = np.interp(range(0,max_length),range(0,len(F4)),F4)
-        arrival_i.append(arrival_index) # Index of first arrival time
         
-        # Calculate first arrival timedeltas
-        arrival_td.append(arrival_index/sample_rate) # Time in s after starttime
+    return(F4_traces)
     
-    # Calculate standard deviation of first arrival timedeltas for first 8 stations
-    stddev = np.std(arrival_td[:s])
-    
-    # Keep only first 8 lists in all_min_i if more than 8 traces
-    max_stations = len(st)
-    if len(st) > s:
-        all_min_i = all_min_i[:s]
-        max_stations = s
-    
-    # Now loop through arrival timedeltas for each trace and select min index that 
-    # minimizes standard deviation
-    for t in range(0,max_stations):   
-        arrival_td_temp = arrival_td # Temporary list of indices for modifying
-        sample_rate = st[t].stats.sampling_rate
-        for min_i in all_min_i[t]:
-            arrival_td_temp[t] = min_i/sample_rate
-            if np.std(arrival_td_temp[:s]) < stddev:
-                # Update index of first arrival time for trace t
-                arrival_i[t] = min_i
-                # Update list of timedeltas
-                arrival_td[t] = arrival_td_temp[t]
-                # Calculate new standard deviation
-                stddev = np.std(arrival_td[:s])
-                
-    # Calculate first arrival times
-    arrival_times = [UTCDateTime(td + starttime.timestamp) for td in arrival_td] 
-        
-    return(F4_traces, arrival_times, arrival_i)
-
-def plotFirstArrivals(starttime, st, F4_traces, arrival_times, arrival_i):   
+def findFirstArrivals(st):
     """
-    Plot first arrival times as vertical dashed lines on transformed stream 
-    object traces. Useful for checking if signal displaying moveout consistent
-    with a landslide, and if right arrival time is being selected as the 
-    first arrival.
+    Transforms each trace in obspy stream object to determine the "first arrival",
+    or onset of the trigger that might be a landslide. Returns time of this onset
+    for each trace, as well as the signal index corresponding to this time and 
+    the transformed traces for plotting. Adapts methodology from Baillard et al 
+    (2014) paper on using kurtosis to pick P- and S-wave onset-times.
     INPUTS
     starttime (UTCDateTime) - starting time of stream object
     st - obspy stream object with seismic information
-    F4_traces (2D numpy array) - traces from stream object after fourth and final transformation 
-        step, useful for plotting first arrival times
+    OUTPUTS
     arrival_times (list of UTCDateTimes) - first arrival times for each trace;
         if multiple arrivals, algorithm selects arrival closest to arrival time
         of first trace (first, first arrival time picked for first trace)
     arrival_i (list of numpy int64s) - indices of first arrival times within
         traces
     """
+    # Pull in signal with kurtosis computed
+    F4_traces = transformSignals(st)
+    
+    # Get stream object start time
+    starttime = st[0].stats.starttime
+    
+    # Compare local minima of transformed signal to find landslide arrival
+    # time at each station   
+    
+    # Get minima for closest station
+    t1 = F4_traces[0]
+    all_first_mins = spsignal.argrelextrema(t1, np.less)[0]
+    first_mins = all_first_mins[np.where(t1[all_first_mins] < min(t1)*.05)[0]]
+    
+    sample_rate = st[0].stats.sampling_rate
+    
+    # Loop through mins for closest station, select minima in other signals that
+    # is closest in time, and select min from closest station that produces most
+    # regular moveout
+    arrival_i = [] # Indices of first arrival times in signal traces
+    arrival_td = [] # Timedeltas of first arrival times (in s) after starttime
+    for m in range(0,len(first_mins)):
+        temp_arrival_i = [] # Indices of first arrival times in signal traces
+        temp_arrival_td = [] # Timedeltas of first arrival times (in s) after starttime 
+        compare_time = UTCDateTime(first_mins[m]/sample_rate + starttime.timestamp)
+        
+        for t in range(0,len(F4_traces)):   
+            F4 = F4_traces[t]
+               
+            # Find minima in signal (must be at least 5% of size of smallest minimum)
+            all_mins = spsignal.argrelextrema(F4, np.less)[0]
+            mins = all_mins[np.where(F4[all_mins] < min(F4)*.05)[0]]
+            
+            # Get sampling rate of this trace
+            sample_rate = st[t].stats.sampling_rate
+        
+            # Set minimum that is closest in time to overall arrival time as
+            # signal's arrival time
+            arrival_index = mins[0]
+            if len(mins) > 1:
+                td1 = abs(compare_time - \
+                          UTCDateTime(mins[0]/sample_rate + starttime.timestamp))
+                closest_min = mins[0]
+                for i in range(1,len(mins)):
+                    temp_arrival_time = UTCDateTime(mins[i]/sample_rate + starttime.timestamp)
+                    td2 = abs(compare_time - temp_arrival_time) 
+                    if td2 < td1:
+                        td1 = abs(compare_time - temp_arrival_time)
+                        closest_min = mins[i]
+                arrival_index = closest_min 
+       
+            temp_arrival_i.append(arrival_index) # Index of first arrival time
+    
+            # Calculate first arrival timedeltas
+            temp_arrival_td.append(arrival_index/sample_rate) # Time in s after starttime
+        
+        # Determine signal moveout by differing timedeltas
+        # Save arrival_i and and arrival_td if deviation of timedeltas is small
+        signal_diff = np.std(np.diff(temp_arrival_td))
+        
+        if m == 0:
+            old_signal_diff = signal_diff
+            
+        if m == 0 or signal_diff < old_signal_diff:
+            old_signal_diff = signal_diff
+            arrival_i = temp_arrival_i
+            arrival_td = temp_arrival_td
+                
+    # Calculate first arrival times of each individual signal from timedeltas
+    arrival_times = [UTCDateTime(td + starttime.timestamp) for td in arrival_td]
+        
+    return(arrival_times, arrival_i)
+
+def plotFirstArrivals(st, arrival_times, arrival_i):   
+    """
+    Plot first arrival times as vertical dashed lines on transformed stream 
+    object traces. Useful for checking if signal displaying moveout consistent
+    with a landslide, and if right arrival time is being selected as the 
+    first arrival.
+    INPUTS
+    st - obspy stream object with seismic information
+    arrival_times (list of UTCDateTimes) - first arrival times for each trace;
+        if multiple arrivals, algorithm selects arrival closest to arrival time
+        of first trace (first, first arrival time picked for first trace)
+    arrival_i (list of numpy int64s) - indices of first arrival times within
+        traces
+    """
+    # Get starttime from stream object
+    starttime = st[0].stats.starttime
+    
+    # Get transformed signal
+    F4_traces = transformSignals(st)
+    
     plt.figure()
     
     numstations = len(st)
