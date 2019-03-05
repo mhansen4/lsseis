@@ -220,7 +220,7 @@ def findEQArrivalTimes(network,station,quakedict):
         
     return(quakedistskm, arrivaltimes)
 
-def removeTeleseisms(starttime,endtime,network,station,trig):
+def removeTeleseisms(starttime,endtime,network,station,trig,maxtimediff=20.0):
     """
     Uses above methods to get arrival times of earthquakes at seismic station
     closest to landslide, compares these times to potential landslide times in
@@ -240,6 +240,9 @@ def removeTeleseisms(starttime,endtime,network,station,trig):
     trig (list of UTCDateTimes) - times of potential landslides, returned from
         seisk stream object in findLandslides() using obspy.signal.trigger
         coincidence_trigger()
+    maxtimediff (float) - maximum time difference in s between arrival time of
+        earthquake seismic waves at landslide coordinates and landslide time for
+        event time in trigger to be considered a teleseism; default is 20.0 s
     OUTPUTS
     new_trig (list of UTCDateTimes) - times of potential landslides with 
         teleseisms removed
@@ -258,11 +261,7 @@ def removeTeleseisms(starttime,endtime,network,station,trig):
     
     # Loop through times and trig and sort as teleseisms or triggers
     for t in trig:
-        comparetime = t['time'].datetime
-        # print('\nTime to compare earthquake arrivals against: ', comparetime)
-        
-        maxtimediff = 20. # How close EQ arrival time should be for match (in s)
-    
+        comparetime = t['time'].datetime    
         matchfound = False
         tseism = 0
         for i in range(0,len(quakedict['arrival time'])):
@@ -290,7 +289,8 @@ def removeTeleseisms(starttime,endtime,network,station,trig):
     # Return lists
     return(new_trig, teleseisms)
     
-def searchComCatforLandslides(starttime,endtime,lslat,lslon,network,station):
+def searchComCatforLandslides(starttime,endtime,lslat,lslon,network,station,
+                              minmag=2.0,maxmag=5.0,maxdepth=7.0,maxdist=20.0):
     """
     Returns dataframe of landslides that were recorded in ComCat between 
     starttime and endtime, in addition to other ComCat info.
@@ -305,10 +305,18 @@ def searchComCatforLandslides(starttime,endtime,lslat,lslon,network,station):
         of Prime Meridian)
     network (str) - seismic network code corresponding to station closest to 
         landslide, comma separated in a single string
-        Example: 'NF,IW,RE,TA,UU'
+        Example: 'NF'
     station (str) - name of seismic station closest to landslide, three letter
         string that is not case-sensitive
-        Example: 'BFR,WOY,TCR,WTM'
+        Example: 'BFR'
+    minmag (float) - minimum event magnitude to search for in ComCat; default
+        is 2.0
+    maxmag (float) - maximum event magnitude to search for in ComCat; default 
+        is 5.0
+    maxdepth (float) - maximum depth to event in ComCat, measured in km; default
+        is 7.0 km
+    maxdist (float) - maximum distance from landslide to event based
+        on its coordinates in ComCat, measured in km; default is 20.0 km
     OUTPUT
     lsdf - pandas dataframe containing event IDs of landslides and potential
         landslides in ComCat ('id'), event dates and times ('date'), event 
@@ -376,20 +384,16 @@ def searchComCatforLandslides(starttime,endtime,lslat,lslon,network,station):
                             'event type': quaketypes})
     
     if len(lsdf) > 0:
-        # Filter events by magnitude
-        minmag = 2.0
-        maxmag = 5.0
         # Create dataframe to hold quakes we don't think are landslides
+        # Filter events by magnitude
         remove_lsdf = lsdf[(lsdf.magnitude > maxmag) | (lsdf.magnitude < minmag)]
         lsdf = lsdf[(lsdf.magnitude <= maxmag) & (lsdf.magnitude >= minmag)]
         
         # Filter events by depth (looking for shallow earthquakes)
-        maxdepth = 7.0 # km
         remove_lsdf = remove_lsdf.append(lsdf[lsdf.depth > maxdepth])
         lsdf = lsdf[lsdf.depth <= maxdepth]
         
         # Filter events by distance from landslide 
-        maxdist = 10.0 # km
         remove_lsdf = remove_lsdf.append(lsdf[lsdf.distance > maxdist])
         lsdf = lsdf[lsdf.distance <= maxdist]
         
