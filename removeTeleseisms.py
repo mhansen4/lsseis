@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Oct 22 09:23:44 2018
-
-@author: mchansen
-"""
 import math
 import pandas as pd
 from datetime import timedelta

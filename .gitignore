@@ -2,3 +2,21 @@
 ######################
 .DS_Store
 .DS_Store?
+
+# All CSV files #
+#################
+*.csv
+
+# All file folders #
+####################
+AftershockListsAndPlots/
+event_search/
+lamplugh_data/
+nisqually_data/
+yacutat_data/
+__pycache__/
+
+# All image files #
+###################
+*.png
+*.jpeg
