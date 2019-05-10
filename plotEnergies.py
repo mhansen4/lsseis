@@ -16,7 +16,7 @@ from reviewData import reviewData
 
 from detectLandslides import getStreamObject
 from findAftershocks import processSignal
-from getPseudoEnergies import getPseudoEnergies, savePseudoEnergies
+from getEnergies import getEnergies, saveEnergies
 
 # Plot scatter plots of event pseudo-energies, max amplitudes, and signal lengths
 def plotEnergyOverview(energies_df, filenamepref, save_plot=False):
@@ -294,12 +294,12 @@ def plotEvent(energies_df, event_id, station_indx, filenamepref,
 
 if __name__ == '__main__': 
     # Input parameters
-    lslat = 58.77918 # latitude of landslide in deg
-    lslon = -136.88827 # longitude of landslide in deg
-    radius = 150. # search radius for nearest seismic stations in km
-    
+    lslat = 46.843 # latitude of landslide in deg
+    lslon = -121.75 # longitude of landslide in deg
+    radius = 50. # search radius for nearest seismic stations in km
+ 
     # Data file info
-    filenamepref = 'lamplugh'
+    filenamepref = 'nisqually'
     folderdat = filenamepref + '_data'
     loadfromfile = True
     savedat = True
@@ -325,6 +325,7 @@ if __name__ == '__main__':
     filenames.sort()
         
     if len(filenames) != 0:
+        print('Reading existing CSV file into energies_df...')
         energies_df = pd.read_csv(csv_to_find)
     else:
         pseudo_energies = []
@@ -340,22 +341,23 @@ if __name__ == '__main__':
             # Get seismic signal stream object
             st1 = getStreamObject(event_time-before,event_time+after,lslat,lslon,
                                   radius=radius,maxradius=500.,loadfromfile=loadfromfile,
-                                  mintraces=7,savedat=savedat,folderdat=folderdat,
+                                  mintraces=4,savedat=savedat,folderdat=folderdat,
                                   filenamepref=filenamepref,limit_stations=8) 
             st1 = processSignal(st1, lslat, lslon)
             
-            energies_df = getPseudoEnergies(energies_df, st1[station_indx], 
-                                            event_time, before, 
-                                            sta_lta_lims=[1.0,2.0], 
-                                            taper_length=15., smoothwin=501, 
-                                            check_calcs=True)
+            print('Calculating event pseudo-energy...')
+            energies_df = getEnergies(st1[station_indx], energies_df, before, 
+                                      stalta_lowerlim=1.0, stalta_upperlim=2.0, 
+                                      taper_length=0.0, smoothwin=301, 
+                                      smoothorder=3, check_calcs=False)
+
             # See signal
             # zp1 = reviewData.InteractivePlot(st1)
 
         # Save pseudo-energies to CSV           
-        energies_df = savePseudoEnergies(energies_df, 
-                                         filenamepref + '_verified_events.csv', 
-                                         before)
+        print('Pseudo-energies saved to CSV.')
+        energies_df = saveEnergies(energies_df, filenamepref + '_verified_events.csv', 
+                                   before)
     
     # Create different plots of pseudo-energies
     plotEnergyOverview(energies_df, filenamepref, save_plot=True)    
@@ -367,6 +369,13 @@ if __name__ == '__main__':
                      x_axis='signal lengths', save_plot=True)
     plotEnergyGroups(energies_df, energy_bins, filenamepref,
                      x_axis='event times', save_plot=True)
-    for i in energies_df[energies_df.Group == 2].index.values:
-        plotEvent(energies_df, i, station_indx, filenamepref, before=before, 
-                  after=after, save_plot=True)
+
+#    # Visualize signals for specific events
+#    event_id = 2
+#    plotEvent(energies_df, event_id, station_indx, filenamepref, before=before, 
+#              after=after, save_plot=True)
+
+#    # Visualize signals for different energy groupings
+#    for i in energies_df[energies_df.Group == 2].index.values:
+#        plotEvent(energies_df, i, station_indx, filenamepref, before=before, 
+#                  after=after, save_plot=True)

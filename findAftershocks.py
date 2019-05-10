@@ -58,7 +58,8 @@ def processSignal(st, lslat, lslon, newsamprate=0.):
     
     return(st)
     
-if __name__ == '__main__':    
+if __name__ == '__main__':
+    """    
     # Input parameters    
     lslat = 60.07367 # latitude of landslide in deg
     lslon = -139.8462 # longitude of landslide in deg
@@ -70,12 +71,24 @@ if __name__ == '__main__':
     known_event_time = UTCDateTime(2017,7,23,21,49,46)
     
     filenamepref = 'yacutat'
+    """
+    lslat = 58.77918 # latitude of landslide in deg
+    lslon = -136.88827 # longitude of landslide in deg
+    radius = 150. # search radius for nearest seismic stations in km
+    starttime = UTCDateTime(2016,6,21,0,0,0)
+    endtime = UTCDateTime(2016,7,6,0,0,0)
+    known_event_time = UTCDateTime(2016,6,28,16,21,3)
+    filenamepref = 'lamplugh'
+    
     folderdat = filenamepref + '_data'
     loadfromfile = True
     savedat = True
     
     # Specify interval to split time period up into in seconds
     interval = 8. * 3600.
+    
+     # Cross correlation threshold to declare an event
+    threshold = 0.65
     
     # Specify part of signal to keep (will be applied to st1 and st2)
     before = 50. # Time to cut before event or trigger start time in s
@@ -88,7 +101,7 @@ if __name__ == '__main__':
     print('Grabbing first known event...')
     st1 = getStreamObject(known_event_time-before,known_event_time+after,lslat,lslon,
                           radius=radius,maxradius=500.,loadfromfile=loadfromfile,
-                          mintraces=7,savedat=savedat,folderdat=folderdat,
+                          mintraces=4,savedat=savedat,folderdat=folderdat,
                           filenamepref=filenamepref,limit_stations=8) 
     st1 = processSignal(st1, lslat, lslon, newsamprate)
     
@@ -113,9 +126,6 @@ if __name__ == '__main__':
         st1_trace_ids[str(trace).split(' | ')[0]] = 1
     
     # Search for aftershocks
-    
-     # Cross correlation threshold to declare an event
-    threshold = 0.75
     
     # Split up big date range into smaller chunks
     starts = np.arange(starttime, endtime, interval)

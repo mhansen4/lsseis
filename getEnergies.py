@@ -12,9 +12,9 @@ from sigproc import sigproc
 Functions for calculating and saving the pseudo-energies of landslide signals.
 """
     
-def getPseudoEnergies(signal, energies_df, before, sta_lta_lims=[1.0,2.0], 
-                          taper_length=0.0, smoothwin=301, smoothorder=3, 
-                          check_calcs=False):
+def getEnergies(signal, energies_df, before, stalta_lowerlim=1.0, 
+                stalta_upperlim=2.0, taper_length=0.0, smoothwin=301, 
+                smoothorder=3, check_calcs=False):
     """
     Calculates the pseudo-energy for an input signal by determining the event
     start and end times using a comination of the signal envelope and the
@@ -28,10 +28,10 @@ def getPseudoEnergies(signal, energies_df, before, sta_lta_lims=[1.0,2.0],
         evaluating only one event
     before (float) - seconds before trigger time that signal was cropped; used
         to get initial event time
-    sta_lta_lims (list of floats) - optional; first value in list is lower STA/LTA 
-        threshold for locating signal minima and second value is the upper STA/LTA 
-        threshold, both of which are used for determining event start and end 
-        times. Additional list values will be ignored.
+    stalta_lowerlim (float) - optional; lower STA/LTA threshold for locating 
+        signal minima, used for determining event start and end times
+    stalta_upperlim (float) - optional; upper STA/LTA threshold for locating 
+        event and determining event start and end times
     taper_length (float) - optional; length in seconds of taper at start of signal
     smoothwin (int) - optional; window length in samples for Savgol smoothing 
         of envelopes
@@ -60,7 +60,7 @@ def getPseudoEnergies(signal, energies_df, before, sta_lta_lims=[1.0,2.0],
     event_time = signal_envelope.stats.starttime + before
 
     # Find peaks in sta_lta
-    peaks, mins = sigproc.peakdet(sta_lta, sta_lta_lims[0])
+    peaks, mins = sigproc.peakdet(sta_lta, stalta_lowerlim)
     peak_inds = [int(peak[0]) for peak in peaks]
     
     # Find minima in sta_lta signal
@@ -106,7 +106,7 @@ def getPseudoEnergies(signal, energies_df, before, sta_lta_lims=[1.0,2.0],
     for peak in peak_inds:
         if peak > lower_search_indx and peak < higher_search_indx:
             peak_inds1.append(peak)  
-            if sta_lta[peak] >= sta_lta_lims[1]:
+            if sta_lta[peak] >= stalta_upperlim:
                 peak_inds2.append(peak)                
     
     # Find largest peak in range
@@ -139,7 +139,7 @@ def getPseudoEnergies(signal, energies_df, before, sta_lta_lims=[1.0,2.0],
     # Find minima with sta_lta < min threshold
     min_inds1 = []
     for mini in min_inds:
-        if sta_lta[mini] <= sta_lta_lims[0]:
+        if sta_lta[mini] <= stalta_lowerlim:
             min_inds1.append(mini)
             
     # Locate min above lower sta/lta threshold that is immediately before 
@@ -247,7 +247,7 @@ def getPseudoEnergies(signal, energies_df, before, sta_lta_lims=[1.0,2.0],
     
     return(energies_df)
     
-def savePseudoEnergies(energies_df, filepath, before):
+def saveEnergies(energies_df, filepath, before):
     """
     Converts returned start, end, and peak times from getPseudoEnergies() into
     UTCDateTime timestamps and saves energies_df to csv file.

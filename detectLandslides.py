@@ -263,81 +263,86 @@ def detectLandslides(st, trig, lslat, lslon, min_stations = 3, min_time1 = 1.0,
     OUTPUT
     events_df - pandas DataFrame with detected landslide times
     """
-    
-    # If no triggers specified for evaluation, evaluate all of them
-    if trig_i == []:
-        trig_i = range(0,len(trig))
-    
-    # Create list to store event times
-    event_times = []
-    
-    for t in trig_i:
-        print('Processing trigger %i of %i...' % (t+1,len(trig)))
-        print(trig[t]['time'])
+    try:
+        # If no triggers specified for evaluation, evaluate all of them
+        if trig_i == []:
+            trig_i = range(0,len(trig))
         
-        # Take slice of signal around trigger time
-        temp = st.copy().trim(trig[t]['time']-100., 
-                              trig[t]['time']+100.)
+        # Create list to store event times
+        event_times = []
         
-        # Delete problematic stations (will need to add to)
-        channels_to_remove = []
-        for channel in temp:
-            if channel.std() < 2.0:
-                channels_to_remove.append(channel)
-        
-        for channel in channels_to_remove:
-            #if len(st.select(station = channel.stats.station)) > 0:
-            temp.remove(channel)
-        
-        # Find first arrivals in signal
-        arrival_times, arrival_inds = findFirstArrivals(temp)
-        
-        # Check if arrival time belongs to event        
-        if len(arrival_times) > 0:  
-            # Find seconds between first arrival at each station and the closest station
-            arrival_secs = [time - arrival_times[0] for time in arrival_times]  
+        for t in trig_i:
+            print('Processing trigger %i of %i...' % (t+1,len(trig)))
+            print(trig[t]['time'])
             
-            # Get predicted arrival times
-            print('Predicting signal arrival times using 1D Earth model...')
-            pred_arrival_secs = predictArrivalTimes(temp, lslat, lslon)
+            # Take slice of signal around trigger time
+            temp = st.copy().trim(trig[t]['time']-100., 
+                                  trig[t]['time']+100.)
             
-            # Find difference in seconds between predicted and real arrival times
-            arrival_secs = np.array(arrival_secs)
-            pred_arrival_secs = np.array(pred_arrival_secs)
-            pred_diff = arrival_secs - pred_arrival_secs
+            # Delete problematic stations (will need to add to)
+            channels_to_remove = []
+            for channel in temp:
+                if channel.std() < 2.0:
+                    channels_to_remove.append(channel)
             
-            print('Difference between predicted arrival times and actual:')
-            print(pred_diff)
+            for channel in channels_to_remove:
+                #if len(st.select(station = channel.stats.station)) > 0:
+                temp.remove(channel)
             
-            # Check if predicted arrival times within some number of 
-            # seconds of actual arrival times for min number of stations
-            check_pass_count = 0
-            for diff in pred_diff:
-                if abs(diff) <= min_time1:
-                    check_pass_count += 1
-                    
-            print('%i predicted arrival time(s) within %.1f s of actual times.' 
-                  % (check_pass_count, min_time1))
-             
-            # Store landslide info if minimum number of stations passed
-            if check_pass_count >= min_stations:                     
-                print('Landslide detected at %s.' % str(arrival_times[0]))                           
-                # Save event time and linear regression parameters
-                event_times.append(arrival_times[0])
-                    
-            print('') # Print blank line between triggers
-    
+            # Find first arrivals in signal
+            arrival_times, arrival_inds = findFirstArrivals(temp)
             
-    # If any times in event_times within min_time2 s of each other, save first one   
-    new_event_times = []
-    if len(event_times) > 0:
-        new_event_times = [event_times[0]]
-        event_times.sort() # Sort times from earliest to latest
-        for e in range(1,len(event_times)):
-            if event_times[e] - event_times[e-1] > min_time2:
-                new_event_times.append(event_times[e]) 
+            # Check if arrival time belongs to event        
+            if len(arrival_times) > 0:  
+                # Find seconds between first arrival at each station and the closest station
+                arrival_secs = [time - arrival_times[0] for time in arrival_times]  
                 
-    print('%i possible landslide(s) found.' % len(new_event_times))
+                # Get predicted arrival times
+                print('Predicting signal arrival times using 1D Earth model...')
+                pred_arrival_secs = predictArrivalTimes(temp, lslat, lslon)
+                
+                # Find difference in seconds between predicted and real arrival times
+                arrival_secs = np.array(arrival_secs)
+                pred_arrival_secs = np.array(pred_arrival_secs)
+                pred_diff = arrival_secs - pred_arrival_secs
+                
+                print('Difference between predicted arrival times and actual:')
+                print(pred_diff)
+                
+                # Check if predicted arrival times within some number of 
+                # seconds of actual arrival times for min number of stations
+                check_pass_count = 0
+                for diff in pred_diff:
+                    if abs(diff) <= min_time1:
+                        check_pass_count += 1
+                        
+                print('%i predicted arrival time(s) within %.1f s of actual times.' 
+                      % (check_pass_count, min_time1))
+                 
+                # Store landslide info if minimum number of stations passed
+                if check_pass_count >= min_stations:                     
+                    print('Landslide detected at %s.' % str(arrival_times[0]))                           
+                    # Save event time and linear regression parameters
+                    event_times.append(arrival_times[0])
+                        
+                print('') # Print blank line between triggers
+        
+                
+        # If any times in event_times within min_time2 s of each other, save first one   
+        new_event_times = []
+        if len(event_times) > 0:
+            new_event_times = [event_times[0]]
+            event_times.sort() # Sort times from earliest to latest
+            for e in range(1,len(event_times)):
+                if event_times[e] - event_times[e-1] > min_time2:
+                    new_event_times.append(event_times[e]) 
+                    
+        print('%i possible landslide(s) found.' % len(new_event_times))
+    except:
+        print('Error encountered. Returning all trigger times in event list.')
+        traceback.print_exc()
+        new_event_times = [trig_i[t]['time']for t in range(len(trig_i))]
+        
     print('') # Print blank line
     
     # Create dataframe for detected events
@@ -380,76 +385,77 @@ def detectAftershocks(st, template, trig, min_time = 20., threshold=0.75,
     discard = []
     
     # Process template
-    tproc = template.copy()
-    for tr in tproc:
-        tr.data = filte.envelope(tr.data)
-    
-    # Process signal slice around each triggering time
-    for t in range(0,len(trig)):
-        print('Processing trigger %i of %i...' % (t+1,len(trig)))
-        print(trig[t]['time'])
+    try:
+        tproc = template.copy()
+        for tr in tproc:
+            tr.data = filte.envelope(tr.data)
         
-        # Take slice of signal around trigger time
-        temp = st.copy().trim(trig[t]['time']-before, 
-                              trig[t]['time']+after)
-        
-        # Resample signal
-        temp.resample(newsamprate)
-        
-        # Process trigger
-        stproc = temp.copy()
-        for tr in stproc:
-            tr.data = spsignal.savgol_filter(filte.envelope(tr.data), smoothwin, 
-                                             smoothorder)
+        # Process signal slice around each triggering time
+        for t in range(0,len(trig)):
+            print('Processing trigger %i of %i...' % (t+1,len(trig)))
+            print(trig[t]['time'])
             
-        # Check if only stations present in tproc are present in stproc
-        tproc_stations = [tr.id for tr in tproc]
-        for tr in stproc:
-            if tr.id not in tproc_stations:
-                stproc.remove(tr)
-        
-        # Check if tproc is not longer than stproc
-        if len(tproc[0]) > len(stproc[0]):
-            max_index = len(stproc[0])
-            for s in range(len(stproc)):
-                stproc[s].data = stproc[s].data[:max_index]
-            for s in range(len(tproc)):
-                tproc[s].data = tproc[s].data[:max_index]
-       
-        # Cross correlate
-        times = []
-        try:
+            # Take slice of signal around trigger time
+            temp = st.copy().trim(trig[t]['time']-before, 
+                                  trig[t]['time']+after)
+            
+            # Resample signal
+            temp.resample(newsamprate)
+            
+            # Process trigger
+            stproc = temp.copy()
+            for tr in stproc:
+                tr.data = spsignal.savgol_filter(filte.envelope(tr.data), smoothwin, 
+                                                 smoothorder)
+                
+            # Check if only stations present in tproc are present in stproc
+            tproc_stations = [tr.id for tr in tproc]
+            for tr in stproc:
+                if tr.id not in tproc_stations:
+                    stproc.remove(tr)
+            
+            # Check if tproc is not longer than stproc
+            if len(tproc[0]) > len(stproc[0]):
+                max_index = len(stproc[0])
+                for s in range(len(stproc)):
+                    stproc[s].data = stproc[s].data[:max_index]
+                for s in range(len(tproc)):
+                    tproc[s].data = tproc[s].data[:max_index]
+           
+            # Cross correlate
+            times = []
             xcorFunc, xcorLags, ccs, times = sigproc.templateXcorrRA(stproc, 
                                                                      tproc, 
                                                                      threshold=threshold)      
-        except:
-            print('Error occurred within templateXcorrRA function for trigger %i:'
-                  % t)
-            traceback.print_exc()
+            
+            # Check if event meets threshold
+            if len(times) == 0:
+                discard.append(trig[t])
+            else:
+                # Take highest value returned and adjust for before time to get 
+                # approximate event time
+                indx = np.argmax(xcorFunc)
+                aftershocks.append(stproc[0].stats.starttime + xcorLags[indx] + before)
         
-        # Check if event meets threshold
-        if len(times) == 0:
-            discard.append(trig[t])
-        else:
-            # Take highest value returned and adjust for before time to get 
-            # approximate event time
-            indx = np.argmax(xcorFunc)
-            aftershocks.append(stproc[0].stats.starttime + xcorLags[indx] + before)
-    
-    # If any times in aftershocks within min_time of each other, save first one   
-    if len(aftershocks) > 1:
-        new_aftershocks = [aftershocks[0]] 
-        aftershocks.sort() # Sort times from earliest to latest
-        for a in range(1,len(aftershocks)):
-            if aftershocks[a] - aftershocks[a-1] > min_time:
-                new_aftershocks.append(aftershocks[a])     
+        # If any times in aftershocks within min_time of each other, save first one   
+        if len(aftershocks) > 1:
+            new_aftershocks = [aftershocks[0]] 
+            aftershocks.sort() # Sort times from earliest to latest
+            for a in range(1,len(aftershocks)):
+                if aftershocks[a] - aftershocks[a-1] > min_time:
+                    new_aftershocks.append(aftershocks[a])     
+            
+            aftershocks = new_aftershocks
         
-        aftershocks = new_aftershocks
-    
-    for af in aftershocks:
-        st_after.append(st.copy().trim(af-before, af+after))
+        for af in aftershocks:
+            st_after.append(st.copy().trim(af-before, af+after))
+            
+        print('%i aftershock(s) found.' % len(aftershocks))
+    except:
+        print('Error occurred while finding aftershocks. Returning all trigger times.')
+        traceback.print_exc()
+        aftershocks = [trig[t]['time'] for t in range(len(trig))]
         
-    print('%i aftershock(s) found.' % len(aftershocks))
     print('') # Print blank line
         
     return(aftershocks, discard, st_after)

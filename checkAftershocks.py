@@ -58,25 +58,19 @@ def processSignal(st, lslat, lslon, newsamprate=0.):
     
 if __name__ == '__main__':  
     # Input parameters
-    """
     lslat = 58.77918 # latitude of landslide in deg
     lslon = -136.88827 # longitude of landslide in deg
-    radius = 250. # search radius for nearest seismic stations in km
-    
-    # Data file info
+    radius = 150. # search radius for nearest seismic stations in km
     filenamepref = 'lamplugh'
-    """
-    lslat = 60.07367 # latitude of landslide in deg
-    lslon = -139.8462 # longitude of landslide in deg
-    radius = 100. # search radius for nearest seismic stations in km
-    filenamepref = 'yacutat'
+
 
     folderdat = filenamepref + '_data'
     loadfromfile = True
     savedat = True
     
     # Import detected aftershocks from saved CSV
-    aftershocks_df = pd.read_csv(filenamepref+'_aftershocks_do_not_save_over.csv')
+    aftershocks_df = pd.read_csv('event_search/' + filenamepref+'_detected_aftershocks.csv')
+    aftershocks_df = aftershocks_df[aftershocks_df['Verified event'] == 'Y']
     aftershocks = aftershocks_df.TIMESTAMP.values
     
     # Specify part of signal to keep (will be applied to st1 and st2)
@@ -85,11 +79,12 @@ if __name__ == '__main__':
     maxstations = 8 # number of nearest stations to include in analysis
 
     # Check signals of each event in aftershock list
-    for a in range(1030,len(aftershocks)):
+    for a in range(len)aftershocks)):
+        print('Checking aftershock %i of %i...' % (a+1,len(aftershocks)))
         as_time = UTCDateTime(aftershocks[a])
         st1 = getStreamObject(as_time-before,as_time+after,lslat,lslon,
                               radius=radius,maxradius=500.,loadfromfile=loadfromfile,
-                              mintraces=3,savedat=savedat,folderdat=folderdat,
+                              mintraces=4,savedat=savedat,folderdat=folderdat,
                               filenamepref=filenamepref,limit_stations=8) 
         st1 = processSignal(st1, lslat, lslon)
         st1, trig, new_trigger_times, teleseisms = findTriggers(lslat,lslon,st1,[])
